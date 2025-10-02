@@ -47,7 +47,7 @@ void setup() {
   delay(1000);
 
   Serial.println("Rotate 90 degrees...");
-  robot.rotate(90, 80);          // angle degrees, speed
+  robot.dour(90, 80);          // angle degrees, speed
 
   Serial.println("Example finished!");
 }

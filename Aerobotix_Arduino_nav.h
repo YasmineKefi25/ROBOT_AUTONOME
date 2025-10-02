@@ -16,7 +16,7 @@ public:
     // main navigation
     void moveDistance(float distance, float speed);
     void dour(float angle, float speed);
-    void rotate(float angle, float speed);
+   // void rotate(float angle, float speed);
     void go(float targetX, float targetY, float speed);
     void stopmotors();
 
@@ -71,14 +71,14 @@ public:
         _kir = kirValue;
     };
 
-    
+
    void setCoefficientsLeft(double kplValue, double kilValue) {
         _kpl = kplValue;
         _kil = kilValue;
     };
 
-    void setMotionProfileParams(float dist, float vmax, float accel);
-    void prepareMotionProfile();
+   /* void setMotionProfileParams(float dist, float vmax, float accel);
+    void prepareMotionProfile();*/
 
 
 private:
@@ -117,7 +117,7 @@ private:
     long _t = 0;
     float dt=0.01f;
 
-    
+
 
     // control params
     int _maxSpeed = 255;
@@ -163,6 +163,19 @@ private:
     void handleLeftInterrupt();
 
     // private methods (names matched with cleaned .cpp)
+void run();
+    void resetControllers();
+    float clamp(float PWM, float min, float max);
+    float acceleration_dour(float speed, float distance, float accel, float decel);
+    int constraint(float a, int min, int max);
+    float getcurrentVelocity(float dist, float t);
+    float angleToDistance(float angleRad, float radius);
+    float ramp(int time);
+
+    // motion profile helpers
+    void setMotionProfileParams(float dist, float vmax, float accel);
+    void prepareMotionProfile();
+    float getProfileSpeed(float traveled);
 
     float compute(float setpoint, float current,float integral,float kpVal,float kiVal) {
         float Kp=kpVal;
@@ -189,20 +202,7 @@ private:
 
 
 
-    void run();
-    void resetControllers();
-    float clamp(float PWM, float min, float max);
-    float acceleration_dour(float speed, float distance, float accel, float decel);
-    int constraint(float a, int min, int max);
-    float getcurrentVelocity(float dist, float t);
-    float angleToDistance(float angleRad, float radius);
-    float ramp(int time);
-
-    // motion profile helpers
-    void setMotionProfileParams(float dist, float vmax, float accel);
-    void prepareMotionProfile();
-    float getProfileSpeed(float traveled);
-
+    
 // global instance declaration (defined in the .cpp)
 extern Aerobotix_Arduino_nav aerobotix_arduino_nav;
 

@@ -1,11 +1,16 @@
 #include "Aerobotix_Arduino_nav.h"
 #include <TimerOne.h>
 
-// ===== GLOBAL INSTANCE =====
-Aerobotix_Arduino_nav aerobotix_arduino_nav;
+// ===== STATIC INSTANCE POINTER =====
 Aerobotix_Arduino_nav* Aerobotix_Arduino_nav::instance = &aerobotix_arduino_nav;
 
+// Create global instance
+Aerobotix_Arduino_nav aerobotix_arduino_nav;
 
+// ===== CONSTRUCTOR =====
+Aerobotix_Arduino_nav::Aerobotix_Arduino_nav() {
+    // Initialization done in header with default values
+}
 
 // ===== INITIALIZATION =====
 void Aerobotix_Arduino_nav::begin() {
@@ -34,6 +39,11 @@ void Aerobotix_Arduino_nav::begin() {
     _previousMillis = millis();
     Serial.println("Aerobotix_Arduino_nav initialized");
 }
+
+/*void Aerobotix_Arduino_nav::Aerobotix_Arduino_nav(){
+
+}*/
+
 
 // ===== STATIC INTERRUPT WRAPPERS =====
 void Aerobotix_Arduino_nav::interruptR_static() { if (instance) instance->handleRightInterrupt(); }
@@ -274,8 +284,7 @@ void Aerobotix_Arduino_nav::resetControllers() {
     _totalR = _totalL = _dS_total = 0;
     _i_right_erreur = _i_left_erreur = _right_erreur = _left_erreur = 0;
     _position_erreur = _orientation_erreur = 0;
-    _pi_right.reset();
-    _pi_left.reset();
+    
 }
 
 float Aerobotix_Arduino_nav::clamp(float PWM, float min, float max) {
