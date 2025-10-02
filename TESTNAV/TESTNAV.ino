@@ -1,7 +1,7 @@
 #include "Aerobotix_Arduino_nav.h"
 
 // Create robot instance
-Aerobotix_Arduino_nav robot;
+Aerobotix_Arduino_nav robot; 
 
 void setup() {
   Serial.begin(9600);
@@ -19,13 +19,17 @@ void setup() {
   robot.setInterruptPinLB(18);
 
   // === 2. Configure parameters ===
-  robot.setKp(0.12);
-  robot.setKi(0.06);
-  robot.setWheelRadius(3.3);   // cm
-  robot.setEntreaxe(14.5);     // cm distance between wheels
-  robot.setPWMMax(200);
-  robot.setPWMMin(50);
-  robot.setMaxSpeed(120);
+  robot.setCoefficientsRight(0.12,0.06);
+  robot.setCoefficientsLeft(0.12,0.06);
+
+
+  robot.setWheelRadius(8);   // cm
+  robot.setEntreaxe(33.5);     // cm distance between wheels
+  robot.setNbTicks(1024);
+  //robot.setPWMMax(255);
+  //robot.setPWMMin(50);
+  //robot._MaxSpeed(120);
+  
 
   // Initialize the robot
   robot.begin();
@@ -35,7 +39,7 @@ void setup() {
   // === 3. Simple movement demo ===
   Serial.println("Move forward 40cm...");
   robot.moveDistance(40, 100);   // distance cm, speed
-  Serial.println(robot.)
+  //Serial.println(robot.)
 
   Serial.println(robot.getCurrentVelocityRight());
   Serial.println(",");

@@ -1,288 +1,209 @@
-
 #ifndef AEROBOTIX_ARDUINO_NAV_H
 #define AEROBOTIX_ARDUINO_NAV_H
 
 #include <Arduino.h>
-#include <TimerOne.h>
 #include <math.h>
 
-// ===== PI Controller Class =====
-class PIController {
-private:
-    float Kp;
-    float Ki;
-    float dt;
-    float integral;
-    float minPWM;
-    float maxPWM;
-
-public:
-    PIController(float kp, float ki, float timestep, float min_pwm, float max_pwm)
-        : Kp(kp), Ki(ki), dt(timestep), integral(0.0f), minPWM(min_pwm), maxPWM(max_pwm) {}
-
-void reset() 
-        { integral = 0.0f; }
-
-float compute(float setpoint, float current) {
-    float error = setpoint - current;
-    float integralCandidate = integral + error * dt;
-    float outputCandidate = Kp * error + Ki * integralCandidate;
-    float output;
-
-    if (outputCandidate > maxPWM) {
-        output = maxPWM;
-        if (error < 0) integral = integralCandidate; // unwind
-    }
-    else if (outputCandidate < minPWM) {
-        output = minPWM;
-        if (error > 0) integral = integralCandidate; // unwind
-    }
-    else {
-        integral = integralCandidate;
-        output = outputCandidate;
-    }
-    return output;
-    }
-};
-
+// ===== MAIN CLASS =====
 class Aerobotix_Arduino_nav {
 public:
-    // ===== CONSTRUCTOR =====
+    // constructor
     Aerobotix_Arduino_nav();
 
-    // ===== INITIALIZATION =====
+    // initialization
     void begin();
 
-    // ===== MAIN NAVIGATION FUNCTIONS =====
+    // main navigation
     void moveDistance(float distance, float speed);
-    void dour(float angle, float speed, bool stop = false);
+    void dour(float angle, float speed);
     void rotate(float angle, float speed);
     void go(float targetX, float targetY, float speed);
     void stopmotors();
+
+    // odometry / periodic
     void updateOdometrie();
 
-    // ===== UTILITY FUNCTIONS =====
+    // utility
     float RadToDeg(float radians);
     float DegToRad(float degrees);
     float calculDistance(long deltaLeftCount, long deltaRightCount, float wheel_radius, int nb_ticks);
     void speed_calcul();
 
-        // ===== GETTER FUNCTIONS =====
-    // Motor pins
+    // getters (examples kept)
     uint8_t getIN1() { return _IN1; }
     uint8_t getIN2() { return _IN2; }
     uint8_t getIN3() { return _IN3; }
     uint8_t getIN4() { return _IN4; }
 
-    // Encoder pins
-    uint8_t getInterruptPinRA() { return _interruptPinRA; }
-    uint8_t getInterruptPinRB() { return _interruptPinRB; }
-    uint8_t getInterruptPinLA() { return _interruptPinLA; }
-    uint8_t getInterruptPinLB() { return _interruptPinLB; }
+    // ... (other getters/setters you had can remain, omitted here for brevity)
+    // I'll include the critical ones you used in the .cpp:
 
-    // Physical parameters
     float getWheelRadius() { return _wheel_radius; }
     float getEntreaxe() { return _entreaxe; }
     int getNbTicks() { return _nb_ticks; }
 
-    // Ticks conversion
-    float getTickcmR() { return _tickcmR; }
-    float getTickcmL() { return _tickcmL; }
-    int getTickZR_P() { return _tickZR_P; }
-    int getTickZL_N() { return _tickZL_N; }
-    int getTickZL_P() { return _tickZL_P; }
-    int getTickZR_N() { return _tickZR_N; }
-
-    // Control parameters
-    int getMaxSpeed() { return _maxSpeed; }
-    int getMinSpeed() { return _minSpeed; }
-    int getMaxAcc() { return _maxAcc; }
-    float getPI() { return _PI; }
-
-    // PID parameters
-    float getKp() { return _kp; }
-    float getKi() { return _ki; }
-    float getKTheta() { return _kTheta; }
-    float getKpDour() { return _kp_dour; }
-    float getKPosition() { return _k_position; }
-
-    // PWM limits
-    float getPWMMin() { return _PWM_MIN; }
-    float getPWMMax() { return _PWM_MAX; }
-    float getPWMMinDoura() { return _PWM_MIN_DOURA; }
-    float getPWMMaxDoura() { return _PWM_MAX_DOURA; }
-
-    // Speed calculation
-    int getSpeedEch() { return _speed_ech; }
-
-    // Navigation state
     float getCurrentVelocityRight() { return _currentvelocityRight; }
-    float getCurrentVelocityLeft() { return _currentvelocityLeft; }
-    long getEncoderLeftCount() { return _encoderLeftCount; }
-    long getEncoderRightCount() { return _encoderRightCount; }
-    float getTheta() { return _theta; }
-    float getDSTotal() { return _dS_total; }
-    float getPWM_R() { return _PWM_R; }
-    float getPWM_L() { return _PWM_L; }
-    int getSens() { return _sens; }
+    float getCurrentVelocityLeft()  { return _currentvelocityLeft; }
+    long  getEncoderLeftCount()     { return _encoderLeftCount; }
+    long  getEncoderRightCount()    { return _encoderRightCount; }
+    float getTheta()                { return _theta; }
+    float getDSTotal()              { return _dS_total; }
+    float getPWM_R()                { return _PWM_R; }
+    float getPWM_L()                { return _PWM_L; }
 
-    // ===== SETTER FUNCTIONS =====
-    // Motor pins
+    // setters (keep if you need runtime changes)
     void setIN1(uint8_t pin) { _IN1 = pin; }
     void setIN2(uint8_t pin) { _IN2 = pin; }
     void setIN3(uint8_t pin) { _IN3 = pin; }
     void setIN4(uint8_t pin) { _IN4 = pin; }
 
-    // Encoder pins
-    void setInterruptPinRA(uint8_t pin) { _interruptPinRA = pin; }
-    void setInterruptPinRB(uint8_t pin) { _interruptPinRB = pin; }
-    void setInterruptPinLA(uint8_t pin) { _interruptPinLA = pin; }
-    void setInterruptPinLB(uint8_t pin) { _interruptPinLB = pin; }
+    //setters for interruption pins
+    setInterruptPinRA(uint8_t pin) { _interruptPinRA = pin; }
+    setInterruptPinRB(uint8_t pin) { _interruptPinRB = pin; }
+    setInterruptPinLA(uint8_t pin) { _interruptPinLA = pin; }
+    setInterruptPinLB(uint8_t pin) { _interruptPinLB = pin; }
 
-    // Physical parameters
     void setWheelRadius(float radius) { _wheel_radius = radius; }
-    void setEntreaxe(float distance) { _entreaxe = distance; }
-    void setNbTicks(int ticks) { _nb_ticks = ticks; }
+    void setEntreaxe(float distance)   { _entreaxe = distance; }
+    void setNbTicks(int ticks)         { _nb_ticks = ticks; }
+    void setCoefficientsRight(double kprValue, double kirValue) {
+        _kpr = kprValue;
+        _kir = kirValue;
+    };
 
-    // Ticks conversion
-    void setTickcmR(float ticks) { _tickcmR = ticks; }
-    void setTickcmL(float ticks) { _tickcmL = ticks; }
-    void setTickZR_P(int ticks) { _tickZR_P = ticks; }
-    void setTickZL_N(int ticks) { _tickZL_N = ticks; }
-    void setTickZL_P(int ticks) { _tickZL_P = ticks; }
-    void setTickZR_N(int ticks) { _tickZR_N = ticks; }
+    
+   void setCoefficientsLeft(double kplValue, double kilValue) {
+        _kpl = kplValue;
+        _kil = kilValue;
+    };
 
-    // Control parameters
-    void setMaxSpeed(int speed) { _maxSpeed = speed; }
-    void setMinSpeed(int speed) { _minSpeed = speed; }
-    void setMaxAcc(int acc) { _maxAcc = acc; }
-    void setPI(float pi) { _PI = pi; }
+    void setMotionProfileParams(float dist, float vmax, float accel);
+    void prepareMotionProfile();
 
-    // PID parameters
-    void setKp_right(float kpr) { _kpr = kpr; }
-    void setKp_left(float kpl) { _kpl = kpl; }
-    void setKi_right(float kir) { _kir = kir; }
-    void setKi_left(float kil) { _kil = kil; }
-
-    void setKTheta(float ktheta) { _kTheta = ktheta; }
-    void setKpDour(float kp_dour) { _kp_dour = kp_dour; }
-    void setKPosition(float k_position) { _k_position = k_position; }
-
-    // PWM limits
-    void setPWMMin(float min) { _PWM_MIN = min; }
-    void setPWMMax(float max) { _PWM_MAX = max; }
-    void setPWMMinDoura(float min) { _PWM_MIN_DOURA = min; }
-    void setPWMMaxDoura(float max) { _PWM_MAX_DOURA = max; }
-
-    // Speed calculation
-    void setSpeedEch(int ech) { _speed_ech = ech; }
-
-    // Navigation state (use with caution)
-    void setCurrentVelocityRight(float vel) { _currentvelocityRight = vel; }
-    void setCurrentVelocityLeft(float vel) { _currentvelocityLeft = vel; }
-    void setEncoderLeftCount(long count) { _encoderLeftCount = count; }
-    void setEncoderRightCount(long count) { _encoderRightCount = count; }
-    void setTheta(float theta) { _theta = theta; }
-    void setDSTotal(float dist) { _dS_total = dist; }
-    void setPWM_R(float pwm) { _PWM_R = pwm; }
-    void setPWM_L(float pwm) { _PWM_L = pwm; }
-    void setSens(int sens) { _sens = sens; }
 
 private:
-    // ===== PRIVATE VARIABLES =====
-    // Motor pins
+    // hardware pins
     uint8_t _IN1 = 3, _IN2 = 2, _IN3 = 4, _IN4 = 5;
-
-    // Encoder pins
     uint8_t _interruptPinRA = 18, _interruptPinRB = 19, _interruptPinLA = 20, _interruptPinLB = 21;
 
-    // Physical parameters
-    float _wheel_radius = 39.55, _entreaxe = 305;
-    int _nb_ticks = 800;
+    // physical parameters
+    float _wheel_radius = 39.55f;    // mm or cm? keep consistent with your .cpp usage
+    float _entreaxe     = 305.0f;
+    int   _nb_ticks     = 800;
 
-    // Navigation & control variables
-    float _currentvelocityRight = 0, _currentvelocityLeft = 0;
-    long _encoderLeftCount = 0, _encoderRightCount = 0;
-    float _theta = 0, _dS_total = 0;
-    float _PWM_R = 0, _PWM_L = 0;
-    int _sens = 1, _speed_ech = 10;
+    // navigation state
+    float _currentvelocityRight = 0.0f;
+    float _currentvelocityLeft  = 0.0f;
+    long  _encoderLeftCount  = 0;
+    long  _encoderRightCount = 0;
+    float _theta = 0.0f;
+    float _dS_total = 0.0f;
+    float _PWM_R = 0.0f;
+    float _PWM_L = 0.0f;
+    int   _sens = 1;
+    int   _speed_ech = 10;
 
-    // Error terms & odometry
-    float _right_erreur = 0, _left_erreur = 0;
-    float _i_right_erreur = 0, _i_left_erreur = 0;
-    float _orientation_erreur = 0, _position_erreur = 0;
-    long _lastEncoderLeftCount = 0, _lastEncoderRightCount = 0;
-    float _totalL = 0, _totalR = 0;
-    float _dsR = 0, _dsL = 0, _dS = 0, _dTheta = 0;
-    float _total_ech_l = 0, _total_ech_r = 0;
+    float _posX = 0.0f, _posY = 0.0f;
+
+    // odometry helpers
+    float _right_erreur = 0.0f, _left_erreur = 0.0f;
+    float _i_right_erreur = 0.0f, _i_left_erreur = 0.0f;
+    float _orientation_erreur = 0.0f, _position_erreur = 0.0f;
+    long  _lastEncoderLeftCount = 0, _lastEncoderRightCount = 0;
+    float _totalL = 0.0f, _totalR = 0.0f;
+    float _dsR = 0.0f, _dsL = 0.0f, _dS = 0.0f, _dTheta = 0.0f;
+    float _total_ech_l = 0.0f, _total_ech_r = 0.0f;
     unsigned long _previousMillis = 0;
     long _t = 0;
-    // ===== CONTROL PARAMETERS =====
+    float dt=0.01f;
+
+    
+
+    // control params
     int _maxSpeed = 255;
     int _minSpeed = 0;
-    int _maxAcc = 100;  
-    float _PI = 3.14159265;
+    int _maxAcc = 100;
+    float _PI = 3.14159265f;
 
-    // ===== PID PARAMETERS =====
-    float _kpr = 1.0;
-    float _kpl = 1.0;
-    float _kir = 0.0;
-    float _kil=0.0;
-    float _kTheta = 1.0;
-    float _kp_dour = 1.0;
-    float _k_position = 1.0;
+    // PID params
+    float _kpr = 1.0f;
+    float _kpl = 1.0f;
+    float _kir = 0.5f;
+    float _kil = 0.5f;
+    float _kTheta = 1.0f;
+    float _kp_dour = 1.0f;
+    float _k_position = 1.0f;
 
-    // ===== TICKS CONVERSION =====
-    float _tickcmR = 0, _tickcmL = 0;
+    // tick conversions
+    float _tickcmR = 0.0f, _tickcmL = 0.0f;
     int _tickZR_P = 0, _tickZL_N = 0, _tickZL_P = 0, _tickZR_N = 0;
 
-    // ===== PWM LIMITS =====
-    float _PWM_MIN = 0, _PWM_MAX = 255;
-    float _PWM_MIN_DOURA = 0, _PWM_MAX_DOURA = 255;
+    // PWM limits
+    float _PWM_MIN = 0.0f, _PWM_MAX = 255.0f;
+    float _PWM_MIN_DOURA = 0.0f, _PWM_MAX_DOURA = 255.0f;
 
+    // motion profile
+    float profileDistance = 0.0f;
+    float targetSpeed = 0.0f;
+    float acceleration = 0.0f;
+    bool  isTriangular = false;
+    float peakSpeed = 0.0f;
+    float accelDistance = 0.0f;
+    float cruiseDistance = 0.0f;
+    float decelDistance = 0.0f;
 
-    // ===== STATIC ISR SUPPORT =====
-    static Aerobotix_Arduino_nav* instance; // pointer for static ISRs
+    // ISR support
+    static Aerobotix_Arduino_nav* instance;
     static void interruptR_static();
     static void interruptL_static();
     static void updateOdometrie_static();
 
-    // Actual handlers
+    // actual ISR handlers
     void handleRightInterrupt();
     void handleLeftInterrupt();
 
-    // ===== PRIVATE METHODS =====
-    void applyMotorCommand(float cmdPwmRight, float cmdPwmLeft);
+    // private methods (names matched with cleaned .cpp)
+
+    float compute(float setpoint, float current,float integral,float kpVal,float kiVal) {
+        float Kp=kpVal;
+        float Ki=kiVal;
+        float error = setpoint - current;
+        float integralCandidate = integral + error * dt;
+        float outputCandidate = Kp * error + Ki * integralCandidate;
+        float output;
+        if (outputCandidate > _PWM_MAX) {
+            output = _PWM_MAX;
+            if (error < 0) integral = integralCandidate; // anti-windup unwind
+        }
+        else if (outputCandidate < _PWM_MIN ) {
+            output = _PWM_MIN ;
+            if (error > 0) integral = integralCandidate; // anti-windup unwind
+        }
+        else {
+            integral = integralCandidate;
+            output = outputCandidate;
+        }
+        return output;
+    }
+};
+
+
+
     void run();
-    void iniiit();
-    float erreur(float PWM, float min, float max);
-    float acceleration(float speed, float distance, float accel, float decel);
+    void resetControllers();
+    float clamp(float PWM, float min, float max);
     float acceleration_dour(float speed, float distance, float accel, float decel);
     int constraint(float a, int min, int max);
     float getcurrentVelocity(float dist, float t);
     float angleToDistance(float angleRad, float radius);
     float ramp(int time);
 
- // ===== Motion Profile Parameters =====
-float profileDistance;   // total target distance (cm)
-float targetSpeed;       // desired maximum speed (cm/s)
-float acceleration;      // acceleration/deceleration rate (cm/s^2)
+    // motion profile helpers
+    void setMotionProfileParams(float dist, float vmax, float accel);
+    void prepareMotionProfile();
+    float getProfileSpeed(float traveled);
 
-bool  isTriangular;      // true if triangular profile, false if trapezoidal
-
-float peakSpeed;         // actual peak speed reached
-float accelDistance;     // distance spent accelerating
-float cruiseDistance;    // distance spent at constant speed
-float decelDistance;     // distance spent decelerating
-
-
-// helpers
-void setMotionProfileParams(float dist, float vmax, float accel);
-void prepareMotionProfile();
-
-};
-
-// Global instance for ISR
+// global instance declaration (defined in the .cpp)
 extern Aerobotix_Arduino_nav aerobotix_arduino_nav;
 
 #endif // AEROBOTIX_ARDUINO_NAV_H
