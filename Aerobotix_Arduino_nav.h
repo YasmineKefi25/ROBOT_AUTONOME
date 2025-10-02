@@ -4,6 +4,46 @@
 
 #include <Arduino.h>
 #include <TimerOne.h>
+#include <math.h>
+
+// ===== PI Controller Class =====
+class PIController {
+private:
+    float Kp;
+    float Ki;
+    float dt;
+    float integral;
+    float minPWM;
+    float maxPWM;
+
+public:
+    PIController(float kp, float ki, float timestep, float min_pwm, float max_pwm)
+        : Kp(kp), Ki(ki), dt(timestep), integral(0.0f), minPWM(min_pwm), maxPWM(max_pwm) {}
+
+void reset() 
+        { integral = 0.0f; }
+
+float compute(float setpoint, float current) {
+    float error = setpoint - current;
+    float integralCandidate = integral + error * dt;
+    float outputCandidate = Kp * error + Ki * integralCandidate;
+    float output;
+
+    if (outputCandidate > maxPWM) {
+        output = maxPWM;
+        if (error < 0) integral = integralCandidate; // unwind
+    }
+    else if (outputCandidate < minPWM) {
+        output = minPWM;
+        if (error > 0) integral = integralCandidate; // unwind
+    }
+    else {
+        integral = integralCandidate;
+        output = outputCandidate;
+    }
+    return output;
+    }
+};
 
 class Aerobotix_Arduino_nav {
 public:
@@ -223,16 +263,18 @@ private:
     float angleToDistance(float angleRad, float radius);
     float ramp(int time);
 
-    // ===== Motion profile (add to private section) =====
-float _mp_dist = 0.0f;     // requested travel distance (cm)
-float _mp_vmax = 0.0f;     // desired max speed (cm/s)
-float _mp_accel = 0.0f;    // acceleration (cm/s^2)
+ // ===== Motion Profile Parameters =====
+float profileDistance;   // total target distance (cm)
+float targetSpeed;       // desired maximum speed (cm/s)
+float acceleration;      // acceleration/deceleration rate (cm/s^2)
 
-float _mp_d_acc = 0.0f;    // computed accel distance (cm)
-float _mp_d_dec = 0.0f;    // computed decel distance (cm)
-float _mp_d_const = 0.0f;  // computed constant-speed distance (cm)
-float _mp_vpeak = 0.0f;    // peak speed actually reached (cm/s)
-bool  _mp_triangular = false; // true if triangular profile
+bool  isTriangular;      // true if triangular profile, false if trapezoidal
+
+float peakSpeed;         // actual peak speed reached
+float accelDistance;     // distance spent accelerating
+float cruiseDistance;    // distance spent at constant speed
+float decelDistance;     // distance spent decelerating
+
 
 // helpers
 void setMotionProfileParams(float dist, float vmax, float accel);

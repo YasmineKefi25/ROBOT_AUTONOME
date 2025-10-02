@@ -5,13 +5,17 @@
 // ===== STATIC INSTANCE POINTER =====
 Aerobotix_Arduino_nav* Aerobotix_Arduino_nav::instance = &aerobotix_arduino_nav;
 
-// Create global instance
-Aerobotix_Arduino_nav aerobotix_arduino_nav;
 
 // ===== CONSTRUCTOR =====
-Aerobotix_Arduino_nav::Aerobotix_Arduino_nav() {
-    // Initialization done in header with default values
+// Create global instance
+Aerobotix_Arduino_nav aerobotix_arduino_nav;
+Aerobotix_Arduino_nav::Aerobotix_Arduino_nav()
+    : _pi_right(1.0f, 0.5f, 0.01f, 0.0f, 255.0f),   // Kp, Ki, dt, minPWM, maxPWM
+      _pi_left(1.0f, 0.5f, 0.01f, 0.0f, 255.0f)     // adjust as needed
+{
+    // other initialization done in header with default values
 }
+
 
 // ===== INITIALIZATION =====
 void Aerobotix_Arduino_nav::begin() {
@@ -81,6 +85,8 @@ void Aerobotix_Arduino_nav::moveDistance(float distance, float speed) {
     float accelVal = 5.0f;   // <-- adjust this to suit your robot (example: 5 cm/s^2)
     setMotionProfileParams(distance, speed, accelVal);
     prepareMotionProfile();
+    float current_speed = _sens * getProfileSpeed(abs(_dS_total));
+
 
     // debug prints (optional)
     // Serial.print("d_acc: "); Serial.println(_mp_d_acc);
@@ -93,19 +99,11 @@ void Aerobotix_Arduino_nav::moveDistance(float distance, float speed) {
 
         // IMPORTANT: your existing acceleration() expects accel and decel as *distances*,
         // so we pass the computed distances _mp_d_acc and _mp_d_dec.
-        float current_speed = _sens * acceleration(speed, abs(distance), fabs(_mp_d_acc), fabs(_mp_d_dec));
+        float current_speed = _sens *getProfileSpeed(abs(_dS_total));
         ...
 
-        // Right PID
-        _right_erreur = current_speed - _currentvelocityRight;
-        _i_right_erreur += _right_erreur;
-        _PWM_R = _kp_right * _right_erreur + _ki_right * _i_right_erreur;
-
-
-        // Left PID
-        _left_erreur = current_speed - _currentvelocityLeft;
-        _i_left_erreur += _left_erreur;
-        _PWM_L = _kp_left * _left_erreur + _ki_left * _i_left_erreur;
+        _PWM_R = _pi_right.compute(current_speed, _currentvelocityRight);
+        _PWM_L = _pi_left.compute(current_speed, _currentvelocityLeft);
 
 
         // Orientation correction
@@ -151,17 +149,9 @@ void Aerobotix_Arduino_nav::dour(float angle, float speed, bool stop) {
 
         float current_speed = _sens * acceleration_dour(speed, abs(distance), abs(accel), abs(decel));
 
-        // Right PID
-        _right_erreur = current_speed - _currentvelocityRight;
-        _i_right_erreur += _right_erreur;
-        _PWM_R = _kp_dour * _right_erreur;
-        _PWM_R = (_sens == 1) ? erreur(_PWM_R, _PWM_MIN_DOURA, _PWM_MAX_DOURA) : erreur(_PWM_R, -_PWM_MAX_DOURA, -_PWM_MIN_DOURA);
+        _PWM_R = _pi_right.compute(current_speed, _currentvelocityRight);
+        _PWM_L = _pi_left.compute(-current_speed, _currentvelocityLeft);
 
-        // Left PID
-        _left_erreur = -current_speed - _currentvelocityLeft;
-        _i_left_erreur += _left_erreur;
-        _PWM_L = _kp_dour * _left_erreur;
-        _PWM_L = (_sens == 1) ? erreur(_PWM_L, -_PWM_MAX_DOURA, -_PWM_MIN_DOURA) : erreur(_PWM_L, _PWM_MIN_DOURA, _PWM_MAX_DOURA);
 
         // Position correction
         float pos_corr = _k_position * (_totalR + _totalL);
@@ -284,45 +274,26 @@ void Aerobotix_Arduino_nav::setMotionProfileParams(float dist, float vmax, float
 // Compute the distances (d_acc, d_dec, d_const) and peak speed (vpeak)
 // based on the input parameters. Uses clamped/triangular vs trapezoidal logic.
 void Aerobotix_Arduino_nav::prepareMotionProfile() {
-    // safety guard: avoid divide-by-zero (if user forgot to set accel)
-    if (_mp_accel <= 0.0f) {
-        // choose a small default acceleration so nothing explodes,
-        // but you should set a realistic accel in setMotionProfileParams.
-        _mp_accel = 1.0f;
-    }
+    float acc_dist = (vmax * vmax) / (2.0f * accel);
 
-    // Distance required to accelerate from 0 to vmax: d = v^2 / (2*a)
-    float acc_dist = (_mp_vmax * _mp_vmax) / (2.0f * _mp_accel);
-
-    // If we don't have enough distance to accelerate and decelerate to vmax:
-    if (2.0f * acc_dist > _mp_dist) {
-        // Triangular profile (no constant-speed phase)
-        _mp_triangular = true;
-
-        // If we split distance in two (acc + dec) with equal accel,
-        // the reachable peak speed vpeak satisfies: vpeak^2 =  a * dist
-        _mp_vpeak   = sqrtf(_mp_accel * _mp_dist);
-        _mp_d_acc   = _mp_dist / 2.0f;
-        _mp_d_dec   = _mp_dist / 2.0f;
-        _mp_d_const = 0.0f;
+    if (2.0f * acc_dist > dist) {
+        // --- Triangular ---
+        triangular = true;
+        vpeak = sqrtf(accel * dist);
+        accelDistance = dist / 2.0f;
+        decelDistance = dist / 2.0f;
+        constDistance = 0.0f;
     } else {
-        // Trapezoidal profile (reach vmax, then constant, then decel)
-        _mp_triangular = false;
-
-        _mp_vpeak   = _mp_vmax;
-        _mp_d_acc   = acc_dist;
-        _mp_d_dec   = acc_dist;
-        _mp_d_const = _mp_dist - 2.0f * acc_dist;
+        // --- Trapezoidal ---
+        triangular = false;
+        vpeak = vmax;
+        accelDistance = acc_dist;
+        decelDistance = acc_dist;
+        constDistance = dist - 2.0f * acc_dist;
     }
 }
 
 // ===== PRIVATE CONTROL =====
-void Aerobotix_Arduino_nav::applyMotorCommand(float cmdR, float cmdL) {
-    digitalWrite(_IN1, cmdR);
-    digitalWrite(_IN2, cmdR);
-    digitalWrite(_IN3, cmdL);
-    digitalWrite(_IN4, cmdL);
-}
 
 void Aerobotix_Arduino_nav::run() {
     if (_PWM_R > 0) { analogWrite(_IN1, _PWM_R); analogWrite(_IN2, 0); }
@@ -336,7 +307,11 @@ void Aerobotix_Arduino_nav::iniiit() {
     _totalR = _totalL = _dS_total = 0;
     _i_right_erreur = _i_left_erreur = _right_erreur = _left_erreur = 0;
     _position_erreur = _orientation_erreur = 0;
+
+    _pi_right.reset();
+    _pi_left.reset();
 }
+
 
 float Aerobotix_Arduino_nav::erreur(float PWM, float min, float max) {
     if (PWM < min) return min;
@@ -344,13 +319,36 @@ float Aerobotix_Arduino_nav::erreur(float PWM, float min, float max) {
     return PWM;
 }
 
-float Aerobotix_Arduino_nav::acceleration(float speed, float distance, float accel, float decel) {
-    float current_speed;
-    if (abs(_dS_total) < accel) current_speed = (speed / accel) * abs(_dS_total);
-    else if (distance - abs(_dS_total) < decel) current_speed = (speed / -decel) * abs(_dS_total) + speed - ((distance - decel) * (speed / -decel));
-    else current_speed = speed;
-    return current_speed;
+float Aerobotix_Arduino_nav::getProfileSpeed(float traveled) {
+    float v;
+
+    if (!isTriangular) {
+        // ---- Trapezoidal profile ----
+        if (traveled < accelDistance) {
+            v = sqrtf(2.0f * acceleration * traveled);
+        }
+        else if (traveled < accelDistance + cruiseDistance) {
+            v = peakSpeed;
+        }
+        else {
+            float decelTraveled = traveled - (accelDistance + cruiseDistance);
+            v = sqrtf(max(0.0f, peakSpeed * peakSpeed - 2.0f * acceleration * decelTraveled));
+        }
+    }
+    else {
+        // ---- Triangular profile ----
+        if (traveled < accelDistance) {
+            v = sqrtf(2.0f * acceleration * traveled);
+        }
+        else {
+            float decelTraveled = traveled - accelDistance;
+            v = sqrtf(max(0.0f, peakSpeed * peakSpeed - 2.0f * acceleration * decelTraveled));
+        }
+    }
+
+    return v;
 }
+
 
 float Aerobotix_Arduino_nav::acceleration_dour(float speed, float distance, float accel, float decel) {
     float delta = _totalR - _totalL;
