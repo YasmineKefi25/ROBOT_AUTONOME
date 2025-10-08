@@ -6,11 +6,11 @@
 #define IN4 7  // Pin pour IN4 du moteur 2
 //set pins for the encoders
     //right
-#define interruptPinRA 2  
-#define interruptPinRB 3
+#define interruptPinRA 19//19  //2
+#define interruptPinRB 18//18//3
     //left
-#define interruptPinLB 19  
-#define interruptPinLA 18  
+#define interruptPinLB 2 //2 //19
+#define interruptPinLA 3  //3//18
 
 
 #define PI 3.14159265358979323846
@@ -127,7 +127,7 @@ void updateOdometrie() {
 //FIN ODOMETRY-----------------------------------------------------------------------------
 
 //MOVE FUNCTIONS--------------------------------------------------------------------
-#define motorCorr 0.935
+#define motorCorr 0.95 //MA TMESECH, DO NOT CHANGE VALUE BALIZ (forward : 0.95/ backwards: 0.785)
 
 #define PWM_MAX 250
 #define PWM_MIN 100
@@ -149,11 +149,19 @@ int peakSpeed = 0;
 //erreur parametre
 float i_right_erreur= 0, i_left_erreur= 0 , right_erreur= 0 ,left_erreur = 0;
 float position_erreur = 0, orientation_erreur = 0;
-float kTheta = 1.0;
-float kir=0.0;
-float kpr = 0.1;
-float kil = 0.0;
-float kpl = 0.1;
+float kTheta = 10;
+/*
+best kp and ki combo:
+kir = 0.3
+kpr = 1.0
+kil = 0.1
+kpl = 1.0
+*/
+
+float kir = 0.3;//
+float kpr = 1.0;
+float kil = 0.1;//
+float kpl = 1.0;
 
 void setMotionProfile(float dist, float vmax, float accel){
   profileDistance = fabs(dist);
@@ -166,7 +174,7 @@ void prepareMotionProfile(){
  // Serial.print( acc_dist);
     if (2.0f * acc_dist >= profileDistance) {
         isTriangular = true;
-        peakSpeed = sqrtf(acceleration * profileDistance);
+        peakSpeed = sqrtf(acceleration * profileDistance *100);
         accelDistance = profileDistance / 2.0f;
         decelDistance = profileDistance / 2.0f;
         cruiseDistance = 0.0f;
@@ -178,38 +186,44 @@ void prepareMotionProfile(){
         accelDistance = acc_dist;
         decelDistance = acc_dist;
         cruiseDistance = profileDistance - 2.0f * acc_dist;
-        Serial.println(accelDistance);
-        Serial.println(cruiseDistance);
+        
 
     }
 }
 
 float getProfileSpeed(float traveled) {
     float v;
+    //Serial.print("peak :    ");Serial.println(peakSpeed);
     if (!isTriangular) {
-        if (traveled < accelDistance) v = sqrtf(2.0f * acceleration * traveled);
+        if (traveled < accelDistance) v = (traveled * targetSpeed)/accelDistance ;
+        // v = sqrtf(2.0f * acceleration * traveled) *100;
         else if (traveled < accelDistance + cruiseDistance){
-          v = peakSpeed *100;
+          v = targetSpeed ;
           }
         else {
-            float decelTraveled = traveled - (accelDistance + cruiseDistance);
-            v = sqrtf(fmaxf(0.0f, peakSpeed * peakSpeed - 2.0f * acceleration * decelTraveled))*100;
+            //float decelTraveled = traveled - (accelDistance + cruiseDistance);
+             float decelTraveled = traveled - (accelDistance + cruiseDistance);
+            float remaining = accelDistance - decelTraveled;
+            v = (remaining * targetSpeed) / accelDistance;
+            //v = (traveled * targetSpeed)/(accelDistance + cruiseDistance);
+            //v = sqrtf(fmaxf(0.0f, peakSpeed * peakSpeed - 2.0f * acceleration * decelTraveled))*100;
            
         }
     } else {
-        if (traveled < accelDistance) v = sqrtf(2.0f * acceleration * traveled)*100;
+        if (traveled < accelDistance) v = (traveled * peakSpeed)/accelDistance;
     
         else {
-            float decelTraveled = traveled - accelDistance;
-            v = sqrtf(fmaxf(0.0f, peakSpeed * peakSpeed - 2.0f * acceleration * decelTraveled))*100;
+             float decelTraveled = traveled - (accelDistance + cruiseDistance);
+            float remaining = accelDistance - decelTraveled;
+            v = (remaining * peakSpeed) / accelDistance;
         }
-        Serial.print("v= ");Serial.print(v);
+      //  Serial.print("v= ");Serial.print(v);
     }
     return v;
 }
 void run() {
-    if (PWM_R > 0) { analogWrite(IN1, PWM_R    ); analogWrite(IN2, 0); }
-    else { analogWrite(IN1, 0); analogWrite(IN2, -PWM_R ); }
+    if (PWM_R > 0) { analogWrite(IN1, PWM_R*motorCorr); analogWrite(IN2, 0); }
+    else { analogWrite(IN1, 0); analogWrite(IN2, -PWM_R  ); }
 
     if (PWM_L > 0) { analogWrite(IN3, PWM_L); analogWrite(IN4, 0); }
     else { analogWrite(IN3, 0); analogWrite(IN4, -PWM_L); }
@@ -238,11 +252,12 @@ void stopmotors() {
 }
 float compute(float setpoint, float current,float& integral,float kpVal,float kiVal) {
         float Kp=kpVal;
-        float dt=0.01f;
+        float dt=0.05f;
         float Ki=kiVal;
         float error = setpoint - current;
         float integralCandidate = integral + error * dt;
         float outputCandidate = Kp * error + Ki * integralCandidate;
+     //   Serial.print("output condidate"); Serial.println(outputCandidate);
         float output;
         if (outputCandidate > PWM_MAX) {
             output = PWM_MAX;
@@ -272,13 +287,18 @@ void moveDistance(float distance, float speed) {
         sens = (dS_total - distance < 0) ? 1 : -1;
         
         float current_speed = sens * getProfileSpeed(fabs(dS_total));
-        PWM_R = compute(current_speed,currentvelocityRight,i_right_erreur,kpr,kir);
+    //    Serial.print("current speed theorique (dependant de la distance)"); Serial.println(current_speed);
+ /*      
+Serial.print("velocity right"); Serial.print(currentvelocityRight);
+Serial.print("  velocity left"); Serial.println(currentvelocityLeft);*/
+       PWM_R = compute(current_speed,currentvelocityRight,i_right_erreur,kpr,kir);
+     //  Serial.print("right error "); Serial.println(i_right_erreur);
         PWM_L = compute(current_speed, currentvelocityLeft,i_left_erreur,kpl,kil);
 
         // Orientation correction
-       /* float Theta_correction = kTheta * (totalR - totalL);
+        float Theta_correction = kTheta * (totalR - totalL);
         PWM_R -= Theta_correction;
-        PWM_L += Theta_correction;*/
+        PWM_L += Theta_correction;
 
         if (sens == 1) {
             PWM_R = clamp(PWM_R, PWM_MIN, PWM_MAX);
@@ -293,6 +313,9 @@ void moveDistance(float distance, float speed) {
         Serial.print("Distance: "); Serial.print(dS_total);
         Serial.print(" / "); Serial.print(distance);
         Serial.print(" PWM_R: "); Serial.print(PWM_R);
+        Serial.print(" right: "); Serial.print(totalR);
+        Serial.print(" left :"); Serial.print(totalL);
+
         Serial.print(" PWM_L: "); Serial.println(PWM_L);
         delay(10);
     }
@@ -330,13 +353,19 @@ void setup() {
 
 
   previousMillis = millis();
+  moveDistance(60, 200);
+  delay(1000);
+  moveDistance(-60, 200);
 
-  moveDistance(100, 200);
+  
+
+
 
 
 }
 
 void loop() {
   // put your main code here, to run repeatedly:
+  
 
 }
