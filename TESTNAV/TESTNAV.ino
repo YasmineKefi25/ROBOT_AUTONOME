@@ -1,7 +1,7 @@
 #include "Aerobotix_Arduino_nav.h"
 
 // Create robot instance
-Aerobotix_Arduino_nav robot; 
+Aerobotix_Arduino_nav robot;
 
 void setup() {
   Serial.begin(9600);
@@ -38,7 +38,7 @@ void setup() {
 
   // === 3. Simple movement demo ===
   Serial.println("Move forward 40cm...");
-  robot.moveDistance(40, 100);   // distance cm, speed
+  robot.moveDistance(400, 100);   // distance cm, speed
   //Serial.println(robot.)
 
   Serial.println(robot.getCurrentVelocityRight());
@@ -53,5 +53,6 @@ void setup() {
 }
 
 void loop() {
+
   // Nothing here, just one-shot demo
 }

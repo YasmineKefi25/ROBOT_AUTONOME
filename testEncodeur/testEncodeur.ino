@@ -1,5 +1,5 @@
 #define encoder_L_A 19
-#define encoder_L_B 3
+#define encoder_L_B 18
 
 volatile long nb_ticks_L = 0;
 
@@ -30,8 +30,11 @@ void setup() {
 
 void loop() {
   static long last_value = 0;
+   
   if (nb_ticks_L != last_value) {
     Serial.println(nb_ticks_L);
+
+   
     last_value = nb_ticks_L;
   }
 }
