@@ -6,11 +6,11 @@
 #define IN4 7  // Pin pour IN4 du moteur 2
 //set pins for the encoders
     //right
-#define interruptPinRA 19
-#define interruptPinRB 18
+#define interruptPinRA 18//19//18
+#define interruptPinRB 19//18//19
     //left
-#define interruptPinLB 2
-#define interruptPinLA 3
+#define interruptPinLB 2//3
+#define interruptPinLA 3//3//2
 
 
 #define PI 3.14159265358979323846
@@ -89,7 +89,6 @@ void speed_calcul(void) {
     // Step 4: Reset accumulated distances for the next calculation
     total_ech_l = 0;
     total_ech_r = 0;
-}
 
 }
 
@@ -130,7 +129,7 @@ void updateOdometrie() {
 //FIN ODOMETRY-----------------------------------------------------------------------------
 
 //MOVE FUNCTIONS--------------------------------------------------------------------
-#define motorCorr 0.935
+#define motorCorr 0.935//0.935
 
 #define PWM_MAX 200
 #define PWM_MIN 100
@@ -155,26 +154,38 @@ int peakSpeed = 0;
 //erreur parametre
 float i_right_erreur= 0, i_left_erreur= 0 , right_erreur= 0 ,left_erreur = 0;
 float position_erreur = 0, orientation_erreur = 0;
-float kTheta = 5;
+float kTheta = 12; //!!!!!!
 
 //forward
-float kir_f = 0.0415;// 0.04
-float kpr_f = 1.0;// 1.0
-float kil_f = 0.087;// 0.087
-float kpl_f = 0.95;//0.95
+float kir_f = 0.1;// 0.04
+float kpr_f = 1;// 1.0
+float kil_f = 0.1;// 0.087
+float kpl_f = 1;//0.95
 
-float kposition = 1.20;
+
 
 //backwards
-float kir_b = 0.6;// 0.025
+float kir_b = 0.025;// 0.025//0.6
 float kpr_b = 1.0;// 1.0
-float kil_b = 0.087;// 0.049
+float kil_b = 0.049;// 0.049//0.087
 float kpl_b = 0.95;//0.95
 
-float kir;// 0.025
-float kpr;// 1.0
-float kil;// 0.049
-float kpl;//0.95
+float kposition = 3.0;//1.2
+//rotate///////////////////////////////////////////////////
+float kir_rp = 0.01;// 0.025
+float kpr_rp = 0.71;// 1.0 //057
+float kil_rp = 0.01;// 0.049
+float kpl_rp = 0.9;//0.95//0.3
+
+float kir_rn = 0.01;// 0.025
+float kpr_rn = 0.759;// 1.0
+float kil_rn = 0.01;// 0.049
+float kpl_rn = 0.930111;//0.95//0.3
+
+float kir;
+float kpr;
+float kil;
+float kpl;
 
 
 void setMotionProfile(float dist, float vmax, float accel){
@@ -203,6 +214,7 @@ void prepareMotionProfile(){
 
 
     }
+   
 }
 
 float getProfileSpeed(float traveled) {
@@ -214,6 +226,7 @@ float getProfileSpeed(float traveled) {
         else if (traveled < accelDistance + cruiseDistance){
           v = targetSpeed ;
           }
+          
         else {
             //float decelTraveled = traveled - (accelDistance + cruiseDistance);
              float decelTraveled = traveled - (accelDistance + cruiseDistance);
@@ -233,7 +246,7 @@ float getProfileSpeed(float traveled) {
         }
       //  Serial.print("v= "); Serial.print(v);
     }
-    return v;
+    return fmax(v,100.0);
 }
 void run() {
     if (PWM_R > 0) { analogWrite(IN1, PWM_R    ); analogWrite(IN2, 0); }
@@ -253,11 +266,9 @@ float clamp(float PWM, float min, float max) {
     if (PWM > max) return max;
     return PWM;
 }
-float RadToDeg(float radians) { return radians * (180.0f / PI); }
-float DegToRad(float degrees) { return degrees * (PI / 180.0f); }
+
 float getcurrentVelocity(float dist, float t) { return dist / t; }
-float angleToDistance(float angleRad, float radius) { return radius * RadToDeg(angleRad); }
-float ramp(int time) { return time * 0.6f; }
+
 void stopmotors() {
     digitalWrite(IN1, LOW);
     digitalWrite(IN2, LOW);
@@ -311,9 +322,7 @@ void moveDistance(float distance, float speed) {
         sens = (dS_total - distance < 0) ? 1 : -1;
 
         float current_speed = sens * getProfileSpeed(fabs(dS_total));
-        //Serial.print("current speed theorique (dependant de la distance)"); Serial.println(current_speed);
-
-        // Format: theoretical_speed   actual_right   actual_left
+        
         Serial.print(current_speed);
         Serial.print("\t");
         Serial.print(currentvelocityRight);
@@ -321,8 +330,7 @@ void moveDistance(float distance, float speed) {
         Serial.println(currentvelocityLeft);
 
         PWM_R = compute(current_speed,currentvelocityRight,i_right_erreur,kpr,kir);
-        //Serial.print("PWM_right ");
-        //Serial.println(PWM_R);
+        
         PWM_L = compute(current_speed, currentvelocityLeft,i_left_erreur,kpl,kil);
 
         // Orientation correction
@@ -341,81 +349,237 @@ void moveDistance(float distance, float speed) {
 
         run();
 
-        //Serial.print("Distance: "); Serial.print(dS_total);
-        //Serial.print(" / "); Serial.print(distance);
-        //Serial.print(" PWM_R: "); Serial.print(PWM_R);
-        //Serial.print(" right: "); Serial.print(currentvelocityRight);
-        //Serial.print(" left :"); Serial.print(currentvelocityLeft);
-
-        //Serial.print(" PWM_L: "); Serial.println(PWM_L);
+        delay(10);
     
     }
 
     stopmotors();
 }
+
+
+
+
+
+
+
+
 void dour(float angle, float speed){
-  if(angle>=0){
-    kir = kir_b;
-    kpr = kpr_b;
-    kil = kil_f;
-    kpl = kpl_f;
+ if(angle>=0){
+    kir = kir_rp;
+    kpr = kpr_rp;
+    kil = kil_rp;
+    kpl = kpl_rp;
   }else{
-    kir = kir_f;
-    kpr = kpr_f;
-    kil = kil_b;
-    kpl = kpl_b;
+    kir = kir_rn;
+    kpr = kpr_rn;
+    kil = kil_rn;
+    kpl = kpl_rn;
   }
-    resetControllers();
-    float distance =  angle * PI * entreaxe / 180.0;
-    setMotionProfile(distance, speed, accelVal);
-    Serial.print(theta * 180.0 / PI);
 
+    sens = (angle >= 0) ? 1 : -1;
+    resetControllers(); 
+    float distance = angle * PI * entreaxe /( 180.0); 
+    setMotionProfile(distance, speed, accelVal); 
     prepareMotionProfile();
-    while (abs(theta * 180.0 / PI - angle) > 4.0) {
-      Serial.print("mezel    :"); Serial.println(abs((theta * 180.0 / PI)) - angle);
-        sens = ((totalR - totalL) - distance < 0) ? -1 : 1;///////////////////////////////
-       // if (_sens == -1 && stop) break;
+  while (abs(abs(theta * 180.0 / PI) - abs(angle)) > 3.0) {
 
-        float current_speed =  getProfileSpeed(abs(theta * 180.0 / PI));
-        PWM_R = compute(current_speed, currentvelocityRight,i_right_erreur,kpr,kir);// i think we should change depending on the direcction wether we give it sens*
-        PWM_L = compute((-1) * current_speed, currentvelocityLeft,i_left_erreur,kpl,kil);
-        // Position correction
-        float pos_corr = kposition * (totalR + totalL);
-        PWM_R += pos_corr;
-        PWM_L -= pos_corr;
+   
+    float remaining = abs(angle) - abs(theta * 180.0 / PI);
+    // Serial.print("remaining : ");Serial.println(remaining);
+    int dir = (remaining >= 0) ? 1 : -1;
+    //Serial.print("sens : ");Serial.println(sens);Serial.print("    ");Serial.println(dir);
+    //Serial.print("   dir ");Serial.println(dir);
+    float current_speed = getProfileSpeed(abs(theta) * entreaxe);
+   /* Serial.print("distance : ");Serial.print(abs(totalR) + abs(totalL));Serial.print("  / ");Serial.print(distance);*/
+ //   Serial.print("   current speed : ");Serial.println(current_speed);
+    PWM_R = computedoura(dir*sens * current_speed, currentvelocityRight, i_right_erreur, kpr, kir);
+    PWM_L = computedoura(-dir*sens * current_speed, currentvelocityLeft, i_left_erreur, kpl, kil);
+   // Serial.print(" PWM right ");Serial.print(PWM_R); Serial.print("             PWM left ");Serial.println(PWM_L);
+///////////////////////////////////////////////////////////////////////
+  /* float avg_abs = (abs(totalR) + abs(totalL)) / 2.0;
 
-        if (sens == 1) {
-            PWM_L = clamp(PWM_L, -PWM_MAX_DOURA, -PWM_MIN_DOURA);
-            PWM_R = clamp(PWM_R, PWM_MIN_DOURA, PWM_MAX_DOURA);
-        } else {
-            PWM_L = clamp(PWM_L, PWM_MIN_DOURA, PWM_MAX_DOURA);
-            PWM_R = clamp(PWM_R, -PWM_MAX_DOURA, -PWM_MIN_DOURA);
+    float pos_corr_R = kposition * (avg_abs - abs(totalR));
+    float pos_corr_L = kposition * (avg_abs - abs(totalL));
+
+    PWM_R += dir * pos_corr_R;  // boost if lagging, reduce if overshoot
+    PWM_L += dir *pos_corr_L;  // same*/
+   // Serial.print(" distance right ");Serial.print(totalR); Serial.print("             distance left ");Serial.println(totalL);
+        //Serial.print(" corr right ");Serial.print(pos_corr_R); Serial.print("             corr left ");Serial.println(pos_corr_L);
+
+////////////////////////////////////////////////////////////
+       float corr_R = kposition * (abs(totalL) - abs(totalR)); // boost/slow based on other wheel
+        float corr_L = kposition * (abs(totalR) - abs(totalL));
+
+        PWM_R += dir*sens *corr_R;
+        PWM_L += -dir*sens* corr_L;
+
+    //  Serial.print(" PWM right ");Serial.print(PWM_R); Serial.print("             PWM left ");Serial.println(PWM_L);
+
+    ////////////////////////////////////////////////////////// Clamping based on direction
+  /*  if (dir == 1) {
+      if(sens = 1){
+        PWM_R = clamp(PWM_R, PWM_MIN_DOURA, PWM_MAX_DOURA);
+        PWM_L = clamp(PWM_L, -PWM_MAX_DOURA, -PWM_MIN_DOURA);
+      }
+      else{
+        // Clockwise rotation: Right wheel forward, Left wheel backward
+        PWM_L = clamp(PWM_L, PWM_MIN_DOURA, PWM_MAX_DOURA);
+        PWM_R = clamp(PWM_R, -PWM_MAX_DOURA, -PWM_MIN_DOURA);
+      }
+    } else {
+        // Counter-clockwise rotation: Right wheel backward, Left wheel forward  
+        if(sens = -1){
+        PWM_R = clamp(PWM_R, PWM_MIN_DOURA, PWM_MAX_DOURA);
+        PWM_L = clamp(PWM_L, -PWM_MAX_DOURA, -PWM_MIN_DOURA);
+      }
+      else{
+        // Clockwise rotation: Right wheel forward, Left wheel backward
+        PWM_L = clamp(PWM_L, PWM_MIN_DOURA, PWM_MAX_DOURA);
+        PWM_R = clamp(PWM_R, -PWM_MAX_DOURA, -PWM_MIN_DOURA);
+      }
+    }
+    */
+    if(dir* sens == 1){
+      PWM_R = clamp(PWM_R, PWM_MIN_DOURA, PWM_MAX_DOURA);
+        PWM_L = clamp(PWM_L, -PWM_MAX_DOURA, -PWM_MIN_DOURA);
+    }
+    else{
+      PWM_L = clamp(PWM_L, PWM_MIN_DOURA, PWM_MAX_DOURA);
+        PWM_R = clamp(PWM_R, -PWM_MAX_DOURA, -PWM_MIN_DOURA);
+    }
+    /*
+    PWM_R = clamp(PWM_R, -PWM_MAX_DOURA, PWM_MAX_DOURA);
+    PWM_L = clamp(PWM_L, -PWM_MAX_DOURA, PWM_MAX_DOURA);
+
+    // Apply deadzone for minimum power
+    if (PWM_R > 0 && PWM_R < PWM_MIN_DOURA) {
+        PWM_R = PWM_MIN_DOURA;
+    } else if (PWM_R < 0 && PWM_R > -PWM_MIN_DOURA) {
+        PWM_R = -PWM_MIN_DOURA;
+    }
+    
+
+    if (PWM_L > 0 && PWM_L < PWM_MIN_DOURA) {
+        PWM_L = PWM_MIN_DOURA;
+    } else if (PWM_L < 0 && PWM_L > -PWM_MIN_DOURA) {
+        PWM_L = -PWM_MIN_DOURA;
+    }*/
+   /* Serial.print(" PWM right ");Serial.print(PWM_R); Serial.print("             PWM left ");Serial.println(PWM_L);*/
+     Serial.print("angle : ");Serial.print((theta * 180.0 / PI));Serial.print("  / ");Serial.println(angle);
+    
+    run();
+   delay(10);
+}
+
+    stopmotors();
+}
+
+/*void dour_bor(float angle, float speed)
+{
+    resetControllers(); 
+    float distance = angle * PI * entreaxe /( 180.0); 
+    setMotionProfile(distance, speed, accelVal); 
+    prepareMotionProfile();
+
+    while ((abs((theta*180)/PI - angle)>2.0))
+    {
+        if (((totalR - totalL) - distance) < 0)
+        {
+            sens = 1;
+        }
+        else
+        {
+          
+            sens = -1;
+
+        }
+        
+        float current_speed = sens * getProfileSpeed(abs(totalR - totalL));
+
+        // right pid
+        right_erreur = current_speed - currentvelocityRight;
+        i_right_erreur += right_erreur;
+        PWM_R = kp_dour * right_erreur;
+
+        //  PWM_R=erreur(PWM_R,PWM_MIN,PWM_MAX);
+        
+        
+        if (sens == 1)
+        {
+            PWM_R = erreur(PWM_R, PWM_MIN_DOURA, PWM_MAX_DOURA);
+        }
+        else
+        {
+            PWM_R = erreur(PWM_R, -PWM_MAX_DOURA, -PWM_MIN_DOURA);
         }
 
+        
+
+
+
+        // left pid
+        left_erreur = -current_speed - currentvelocityLeft;
+        i_left_erreur += left_erreur;
+        PWM_L = kp_dour * left_erreur;
+        // PWM_L=erreur(PWM_L,-PWM_MAX,-PWM_MIN);
+        if (sens == 1)
+        {
+            PWM_L = erreur(PWM_L, -PWM_MAX_DOURA, -PWM_MIN_DOURA);
+        }
+        else
+        {
+            PWM_L = erreur(PWM_L, PWM_MIN_DOURA, PWM_MAX_DOURA);
+        }
+
+        // position pid
+        position_erreur = k_position * (totalR + totalL);
+        Serial.print(position_erreur);
+        Serial.print("     ");
+        // Theta_correction=kTheta*orientation_erreur;
+
+        PWM_R += position_erreur;
+        PWM_L -= position_erreur;
+
+        if (sens == 1)
+        {
+            PWM_L = erreur(PWM_L, -PWM_MAX_DOURA, -PWM_MIN_DOURA);
+        }
+        else
+        {
+            PWM_L = erreur(PWM_L, PWM_MIN_DOURA, PWM_MAX_DOURA);
+        }
+        if (sens == 1)
+        {
+            PWM_R = erreur(PWM_R, PWM_MIN_DOURA, PWM_MAX_DOURA);
+        }
+        else
+        {
+            PWM_R = erreur(PWM_R, -PWM_MAX_DOURA, -PWM_MIN_DOURA);
+        }
         float PWM_test = PWM_R;
         PWM_R = PWM_L;
         PWM_L = PWM_test;
-
+        Serial.print(theta);
+        Serial.println("     ");
         run();
-
-        Serial.print("Angle: "); Serial.print(theta * 180.0 / PI);
-        Serial.print(" / "); Serial.print(angle);
-        Serial.print(" PWM_R: "); Serial.print(PWM_R);
-        Serial.print(" PWM_L: "); Serial.println(PWM_L);
-      
     }
     stopmotors();
-}
+   
+}*/
+
 
 float computedoura(float setpoint, float current,float& integral,float kpVal,float kiVal) {
         float Kp=kpVal;
         float dt=0.05f;
         float Ki=kiVal;
         float error = setpoint - current;
+        
         float integralCandidate = integral + error * dt;
+       
         float outputCandidate = Kp * error + Ki * integralCandidate;
+//Serial.print("output condidate : "); Serial.print(outputCandidate);
         float output;
-        if (abs(outputCandidate) > PWM_MAX) {
+        /*****************************if (abs(outputCandidate) > PWM_MAX) {
             output = PWM_MAX;
             if (error < 0) integral = integralCandidate; // anti-windup unwind
         }
@@ -426,11 +590,27 @@ float computedoura(float setpoint, float current,float& integral,float kpVal,flo
         else {
             integral = integralCandidate;
             output = outputCandidate;
+        }********************************/
+              //  Serial.print("output :"); Serial.println(output);
+        if (outputCandidate > PWM_MAX) {
+            output = PWM_MAX;
+            if (error < 0) integral = integralCandidate; // anti-windup unwind
         }
-                Serial.print("output :"); Serial.println(output);
-
-        return sens *output;
-    }
+        else if (outputCandidate < -PWM_MAX) {
+            output = -PWM_MAX;
+            if (error > 0) integral = integralCandidate; // anti-windup unwind
+        }
+        else if (fabs(outputCandidate) < PWM_MIN) {
+            // Optional: deadzone or minimum drive
+            output = (outputCandidate > 0 ? PWM_MIN : -PWM_MIN);
+            integral = integralCandidate;
+        }
+        else {
+            integral = integralCandidate;
+            output = outputCandidate;
+        }
+                return output;
+}
 
 
 
@@ -465,10 +645,11 @@ void setup() {
 
   previousMillis = millis();
   //Serial.print("lll");
-  dour(-180,160); // 
   //delay(4000);
-  //moveDistance(-100,150);
-
+  /*dour(-180, 120);
+  delay(1000);
+  dour(180,120);*/
+  moveDistance(70,120);
 }
 
 void loop() {

@@ -1,249 +1,299 @@
+#include <Arduino.h>
 #include <TimerOne.h>
+#include <math.h>
 
+// =========================
+// ===== ROBOT PINS =======
+#define IN1 4
+#define IN2 5
+#define IN3 6
+#define IN4 7
 
-//  Pin Definitions
-#define IN1 3    // Motor Right control pin 1
-#define IN2 2    // Motor Right control pin 2
-#define IN3 4    // Motor Left control pin 1
-#define IN4 5    // Motor Left control pin 2
+#define ENC_L_A 3
+#define ENC_L_B 2
+#define ENC_R_A 19
+#define ENC_R_B 18
 
-#define interruptPinRA 18  // Encoder Right channel A
-#define interruptPinRB 19  // Encoder Right channel B
-#define interruptPinLA 20  // Encoder Left channel A
-#define interruptPinLB 21  // Encoder Left channel B
+// =========================
+// ===== ROBOT GEOMETRY =====
+const float WHEEL_RADIUS = 4;   // cm
+const float WHEEL_BASE   = 33.5; // cm
+const int TICKS_PER_REV  = 800;  // encoder ticks per wheel rev
+const float DT           = 0.05; // PID update period (s)
 
-//  Physical Robot Constants
-#define tickcmR 58.6          // Ticks per cm (Right wheel)
-#define tickcmL 58.9          // Ticks per cm (Left wheel)
-#define wheel_radius 39.55    // Wheel radius in mm
-#define entreaxe 305          // Distance between wheels in mm
+// =========================
+// ===== MOTION PROFILE =====
+float vmax = 20.0;
+float accel = 5.0;
+float d_acc = 0.0;
+float d_dec = 0.0;
+float d_const = 0.0;
+float vpeak = 0.0;
+int triangular = 0;
 
-//  Motion & Speed Limits
-float PWM_MIN = 70;           
-float PWM_MAX = 180;
+// =========================
+// ===== ENCODERS =====
+volatile long leftTicks = 0;
+volatile long rightTicks = 0;
+long prevLeftTicks = 0;
+long prevRightTicks = 0;
 
-float PWM_MIN_DOURA = 85;
-float PWM_MAX_DOURA = 150;
+// =========================
+// ===== ODOMETRY =====
+float distanceLeft = 0.0;
+float distanceRight = 0.0;
+float linearDistance = 0.0;
+float theta = 0.0;
+float speedLeft = 0.0;
+float speedRight = 0.0;
+float linearSpeed = 0.0;
+float angularSpeed = 0.0;
 
-//  PID Gains
+// =========================
+// ===== PID =====
+float Kp_L = 1.0, Ki_L = 0.1;
+float Kp_R = 1.0, Ki_R = 0.1;
+float integral_L = 0.0, integral_R = 0.0;
+float minPWM = 0.0, maxPWM = 255.0;
 
-// Right Wheel
-float kp_R = 0.1;
-float ki_R = 0.05;
+// =========================
+// ===== TARGET SPEEDS =====
+float targetSpeedL = 0.0;
+float targetSpeedR = 0.0;
 
-// Left Wheel
-float kp_L = 0.12;
-float ki_L = 0.045;
+// =========================
+// ===== SERIAL OPTIMIZATION =====
+unsigned long serialCounter = 0;
+const int serialSkip = 4; // print every 4 loops (~200ms)
 
-// Orientation Correction for Straight Line
-float kTheta = 2.0;
+// =========================
+// ===== MOTION CONTROL =====
+bool moving = false;
+float moveTargetDistance = 0.0;
+float moveDirection = 1.0;
+float rotateTargetDistance = 0.0;
+float rotateDirection = 1.0;
+bool rotating = false;
 
-// Rotation Gains
-float kp_dour = 0.001;       // Rotation proportional gain
-float k_position = 0.5;      // Rotation wheel balancing
+// =========================
+// ===== FUNCTION DECLARATIONS =====
+void updateOdometry();
+void calculateDistance();
+void calculateSpeed();
+void prepareMotionProfile(float dist);
+float calculateCommandedSpeed(float traveledDist);
+float computePI(float setpoint, float current, float Kp, float Ki, float &integral);
+void runMotors(float pwmL, float pwmR);
+void stopMotors();
+float clamp(float val, float minVal, float maxVal);
+void resetControllers();
+void startMove(float distance, float speed);
+void startRotate(float angle, float speed);
+void processMotion();
 
-//  Global Variables
-volatile long encoderRightCount = 0;
-volatile long encoderLeftCount = 0;
+// =========================
+// ===== ENCODER INTERRUPTS =====
+void ISR_leftA()  { bool A = digitalRead(ENC_L_A); bool B = digitalRead(ENC_L_B); leftTicks += (A==B)?1:-1; }
+void ISR_leftB()  { bool A = digitalRead(ENC_L_A); bool B = digitalRead(ENC_L_B); leftTicks += (A!=B)?1:-1; }
+void ISR_rightA() { bool A = digitalRead(ENC_R_A); bool B = digitalRead(ENC_R_B); rightTicks += (A==B)?1:-1; }
+void ISR_rightB() { bool A = digitalRead(ENC_R_A); bool B = digitalRead(ENC_R_B); rightTicks += (A!=B)?1:-1; }
 
-long previousRightCount = 0;
-long previousLeftCount = 0;
-
-float totalR = 0; // total distance right wheel
-float totalL = 0; // total distance left wheel
-
-float theta = 0;  // robot orientation (rad)
-
-// Speed measurement
-float speedR = 0;
-float speedL = 0;
-
-// Errors
-float right_erreur = 0;
-float left_erreur = 0;
-float i_right_erreur = 0;
-float i_left_erreur = 0;
-
-float orientation_erreur = 0;
-float Theta_correction = 0;
-
-float PWM_R = 0;
-float PWM_L = 0;
-
-//  Encoder Interrupts
-void interruptR() {
-  if (digitalRead(interruptPinRA) == digitalRead(interruptPinRB)) {
-    encoderRightCount--;
-  } else {
-    encoderRightCount++;
-  }
-}
-
-void interruptL() {
-  if (digitalRead(interruptPinLA) == digitalRead(interruptPinLB)) {
-    encoderLeftCount++;
-  } else {
-    encoderLeftCount--;
-  }
-}
-
-//  Motor Control
-void run() {
-  // Right Motor
-  if (PWM_R >= 0) {
-    analogWrite(IN1, PWM_R);
-    analogWrite(IN2, 0);
-  } else {
-    analogWrite(IN1, 0);
-    analogWrite(IN2, -PWM_R);
-  }
-
-  // Left Motor
-  if (PWM_L >= 0) {
-    analogWrite(IN3, PWM_L);
-    analogWrite(IN4, 0);
-  } else {
-    analogWrite(IN3, 0);
-    analogWrite(IN4, -PWM_L);
-  }
-}
-
-void stopmotors() {
-  analogWrite(IN1, 0);
-  analogWrite(IN2, 0);
-  analogWrite(IN3, 0);
-  analogWrite(IN4, 0);
-}
-
-//  Odometry Update
-void updateOdometrie() {
-  long deltaRight = encoderRightCount - previousRightCount;
-  long deltaLeft = encoderLeftCount - previousLeftCount;
-
-  previousRightCount = encoderRightCount;
-  previousLeftCount = encoderLeftCount;
-
-  // Distance each wheel traveled (mm)
-  float dsR = (deltaRight / tickcmR) * 10.0; // cm → mm
-  float dsL = (deltaLeft / tickcmL) * 10.0;
-
-  totalR += dsR;
-  totalL += dsL;
-
-  // Orientation change
-  float dTheta = (dsR - dsL) / entreaxe;
-  theta += dTheta;
-}
-
-//  Move Straight Function
-void moveDistance(float distance, float speed) {
-  // Reset integrals
-  i_right_erreur = 0;
-  i_left_erreur = 0;
-  totalR = 0;
-  totalL = 0;
-
-  while (abs(distance - ((totalR + totalL) / 2.0)) > 1.0) {
-    // Calculate errors
-    right_erreur = distance - totalR;
-    left_erreur = distance - totalL;
-
-    i_right_erreur += right_erreur;
-    i_left_erreur += left_erreur;
-
-    // --- Wheel-Specific PI ---
-    PWM_R = kp_R * right_erreur + ki_R * i_right_erreur;
-    PWM_L = kp_L * left_erreur + ki_L * i_left_erreur;
-
-    // --- Orientation Correction ---
-    orientation_erreur = totalR - totalL;
-    Theta_correction = kTheta * orientation_erreur;
-
-    PWM_R -= Theta_correction;
-    PWM_L += Theta_correction;
-
-    // Limit PWM
-    if (PWM_R > PWM_MAX) PWM_R = PWM_MAX;
-    if (PWM_R < PWM_MIN) PWM_R = PWM_MIN;
-    if (PWM_L > PWM_MAX) PWM_L = PWM_MAX;
-    if (PWM_L < PWM_MIN) PWM_L = PWM_MIN;
-
-    // Send to motors
-    run();
-  }
-
-  stopmotors();
-}
-
-
-//  Rotate In Place Function
-void dour(float angle, float speed, bool stopAfter = true) {
-  // Distance each wheel must travel for given angle
-  float distance = (angle * PI * entreaxe) / 180.0;
-
-  totalR = 0;
-  totalL = 0;
-
-  while ((abs(totalR) + abs(totalL)) / 2.0 < distance) {
-    float orientation_error = distance - ((abs(totalR) + abs(totalL)) / 2.0);
-
-    // Base rotation control
-    PWM_R = kp_dour * orientation_error;
-    PWM_L = kp_dour * orientation_error;
-
-    // Make right wheel go backward
-    PWM_R = -PWM_R;
-
-    // Position balancing between wheels
-    float position_diff = abs(totalR) - abs(totalL);
-    float position_correction = k_position * position_diff;
-
-    PWM_R -= position_correction;
-    PWM_L += position_correction;
-
-    // Limit PWM
-    if (PWM_R > PWM_MAX_DOURA) PWM_R = PWM_MAX_DOURA;
-    if (PWM_R < PWM_MIN_DOURA) PWM_R = PWM_MIN_DOURA;
-    if (PWM_L > PWM_MAX_DOURA) PWM_L = PWM_MAX_DOURA;
-    if (PWM_L < PWM_MIN_DOURA) PWM_L = PWM_MIN_DOURA;
-
-    run();
-  }
-
-  if (stopAfter) stopmotors();
+// =========================
+// ===== TIMER ISR (Odometry) =====
+void ISR_Timer() {
+    updateOdometry();
 }
 
 // =========================
-//  Setup & Loop
-// =========================
+// ===== SETUP =====
 void setup() {
-  Serial.begin(9600);
+  Serial.begin(115200);
 
-  pinMode(IN1, OUTPUT);
-  pinMode(IN2, OUTPUT);
-  pinMode(IN3, OUTPUT);
-  pinMode(IN4, OUTPUT);
+  pinMode(IN1, OUTPUT); pinMode(IN2, OUTPUT);
+  pinMode(IN3, OUTPUT); pinMode(IN4, OUTPUT);
 
-  pinMode(interruptPinRA, INPUT);
-  pinMode(interruptPinRB, INPUT);
-  pinMode(interruptPinLA, INPUT);
-  pinMode(interruptPinLB, INPUT);
+  pinMode(ENC_L_A, INPUT_PULLUP); pinMode(ENC_L_B, INPUT_PULLUP);
+  pinMode(ENC_R_A, INPUT_PULLUP); pinMode(ENC_R_B, INPUT_PULLUP);
 
-  attachInterrupt(digitalPinToInterrupt(interruptPinRA), interruptR, CHANGE);
-  attachInterrupt(digitalPinToInterrupt(interruptPinLA), interruptL, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(ENC_L_A), ISR_leftA, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(ENC_L_B), ISR_leftB, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(ENC_R_A), ISR_rightA, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(ENC_R_B), ISR_rightB, CHANGE);
 
-  Timer1.initialize(5000); // 5ms timer
-  Timer1.attachInterrupt(updateOdometrie);
+  resetControllers();
 
-  Serial.println("Robot Ready");
+  // Setup TimerOne for precise 50ms updates
+  Timer1.initialize(50000); // 50 ms = 50000 us
+  Timer1.attachInterrupt(ISR_Timer);
+
+  // Example: Start a move
+  startMove(50.0, 15.0);
+  // Example: Rotate 90 degrees
+  // startRotate(90.0, 10.0);
 }
 
+// =========================
+// ===== LOOP =====
 void loop() {
-  // Example trajectory
-  moveDistance(1000, 2500);   // Move forward 1 meter
-  dour(90, 1500, true);       // Rotate 90 degrees
-  moveDistance(500, 2500);    // Move forward 50 cm
-  stopmotors();
+    // Process motion non-blocking
+    processMotion();
+}
 
-  while (1); // Stop here
+// =========================
+// ===== FUNCTIONS =====
+void resetControllers() {
+  integral_L = 0.0; integral_R = 0.0;
+  prevLeftTicks = leftTicks; prevRightTicks = rightTicks;
+  distanceLeft = 0.0; distanceRight = 0.0;
+  linearDistance = 0.0; theta = 0.0;
+  speedLeft = 0.0; speedRight = 0.0;
+}
+
+void calculateDistance() {
+  long dL = leftTicks - prevLeftTicks;
+  long dR = rightTicks - prevRightTicks;
+  prevLeftTicks = leftTicks; prevRightTicks = rightTicks;
+
+  distanceLeft  = 2.0*PI*WHEEL_RADIUS*dL/(TICKS_PER_REV*4.0);
+  distanceRight = 2.0*PI*WHEEL_RADIUS*dR/(TICKS_PER_REV*4.0);
+}
+
+void calculateSpeed() {
+  speedLeft  = distanceLeft / DT;
+  speedRight = distanceRight / DT;
+  linearSpeed  = (speedLeft + speedRight)/2.0;
+  angularSpeed = (speedRight - speedLeft)/WHEEL_BASE;
+}
+
+void updateOdometry() {
+  calculateDistance();
+  linearDistance += (distanceLeft + distanceRight)/2.0;
+  theta += (distanceRight - distanceLeft)/WHEEL_BASE;
+  calculateSpeed();
+}
+
+void prepareMotionProfile(float dist) {
+  float accDist = (vmax*vmax)/(2.0*accel);
+  if (2.0*accDist > dist) {
+    triangular = 1;
+    vpeak = sqrt(accel*dist);
+    d_acc = dist/2.0; d_dec = dist/2.0; d_const = 0.0;
+  } else {
+    triangular = 0;
+    vpeak = vmax;
+    d_acc = accDist; d_dec = accDist; d_const = dist - 2.0*accDist;
+  }
+}
+
+float calculateCommandedSpeed(float traveledDist) {
+  if (traveledDist < d_acc) return sqrt(2.0*accel*traveledDist);
+  if (traveledDist < d_acc + d_const) return vpeak;
+  if (traveledDist < d_acc + d_const + d_dec) return sqrt(vpeak*vpeak - 2.0*accel*(traveledDist-d_acc-d_const));
+  return 0.0;
+}
+
+float computePI(float setpoint, float current, float Kp, float Ki, float &integral) {
+  float error = setpoint - current;
+  float integralCandidate = integral + error*DT;
+  float output;
+  float outputCandidate = Kp*error + Ki*integralCandidate;
+  if (outputCandidate > maxPWM) { output = maxPWM; if (error<0) integral=integralCandidate; }
+  else if (outputCandidate < minPWM) { output = minPWM; if (error>0) integral=integralCandidate; }
+  else { integral = integralCandidate; output = outputCandidate; }
+  return output;
+}
+
+float clamp(float val, float minVal, float maxVal) {
+  if (val>maxVal) return maxVal;
+  if (val<minVal) return minVal;
+  return val;
+}
+
+void runMotors(float pwmL, float pwmR) {
+  pwmL = clamp(pwmL, -255, 255);
+  pwmR = clamp(pwmR, -255, 255);
+
+  if(pwmL >= 0) { analogWrite(IN1, pwmL); analogWrite(IN2, 0); }
+  else { analogWrite(IN1, 0); analogWrite(IN2, -pwmL); }
+
+  if(pwmR >= 0) { analogWrite(IN3, pwmR); analogWrite(IN4, 0); }
+  else { analogWrite(IN3, 0); analogWrite(IN4, -pwmR); }
+}
+
+void stopMotors() {
+  analogWrite(IN1, 0); analogWrite(IN2, 0);
+  analogWrite(IN3, 0); analogWrite(IN4, 0);
+}
+
+// =========================
+// ===== MOTION CONTROL =====
+void startMove(float distance, float speed){
+  resetControllers();
+  vmax = speed;
+  prepareMotionProfile(distance);
+  moveTargetDistance = distance;
+  moveDirection = 1.0;
+  moving = true;
+}
+
+void startRotate(float angle, float speed){
+  resetControllers();
+  float radDistance = PI*WHEEL_BASE*abs(angle)/180.0;
+  prepareMotionProfile(radDistance);
+  rotateTargetDistance = radDistance;
+  rotateDirection = (angle>0)?1.0:-1.0;
+  rotating = true;
+}
+
+void processMotion(){
+  if(moving){
+    float traveled = linearDistance;
+    float targetSpeed = calculateCommandedSpeed(traveled);
+    targetSpeedL = targetSpeed; targetSpeedR = targetSpeed;
+
+    float pwmL = computePI(targetSpeedL, speedLeft, Kp_L, Ki_L, integral_L);
+    float pwmR = computePI(targetSpeedR, speedRight, Kp_R, Ki_R, integral_R);
+
+    runMotors(pwmL,pwmR);
+
+    serialCounter++;
+    if(serialCounter>=serialSkip){
+      serialCounter=0;
+      Serial.print(traveled); Serial.print(",");
+      Serial.print(targetSpeedL); Serial.print(",");
+      Serial.print(speedLeft); Serial.print(",");
+      Serial.println(speedRight);
+    }
+
+    if(traveled >= moveTargetDistance){
+      stopMotors();
+      moving = false;
+    }
+  }
+
+  if(rotating){
+    float traveled = abs((distanceRight - distanceLeft)/2.0);
+    float targetSpeed = calculateCommandedSpeed(traveled);
+    targetSpeedL = rotateDirection*targetSpeed;
+    targetSpeedR = -rotateDirection*targetSpeed;
+
+    float pwmL = computePI(targetSpeedL, speedLeft, Kp_L, Ki_L, integral_L);
+    float pwmR = computePI(targetSpeedR, speedRight, Kp_R, Ki_R, integral_R);
+
+    runMotors(pwmL,pwmR);
+
+    serialCounter++;
+    if(serialCounter>=serialSkip){
+      serialCounter=0;
+      Serial.print(traveled); Serial.print(",");
+      Serial.print(targetSpeedL); Serial.print(",");
+      Serial.print(speedLeft); Serial.print(",");
+      Serial.println(speedRight);
+    }
+
+    if(traveled >= rotateTargetDistance){
+      stopMotors();
+      rotating = false;
+    }
+  }
 }
